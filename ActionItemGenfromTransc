@@ -1,0 +1,202 @@
+'******************************************************************************************************
+'
+' Name:                 Action items from Audio recording transcription
+' Description:          This VBA script is intended to be used in Microsoft Word to call the OpenAI
+'                       API: https://api.openai.com/v1/chat/completions to generate a set of action
+'                       items from a status meeting audio recording and insert into a Word document
+'
+' Date:                 April 13, 2024
+' Author:               Mark Stankevicius
+' GitHib Repository:    https://github.com/stankev/chatgpt-actionitemsftransc
+'
+'******************************************************************************************************
+Sub ActionItemFTransc()
+        
+    Dim textRange As Range
+    Dim systemPrompt As String, chatPromptTransc As String
+    Dim url As String, requestData As String, modelName As String
+    Dim httpRequest As Object
+    Dim OpenAI_Api_Key As String
+    Dim response As String
+    Dim statusCode As Long
+    Dim errorText As String, displayErrorText As String, errorType As String
+    Dim jsonObjE As Object
+    Dim tempValue As Double, top_pValue As Double, freqPenalty As Double, presPenalty As Double
+    Dim displayText As String                   ' will hold the generated action items to be inserted into the document
+    Dim transcribedText As String               ' Transcribed text from the audio recording
+    
+   
+    ' Set the info for the POST request
+    ' Enter Your API Key in the line below
+    OpenAI_Api_Key = "sk-nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"   ' MAKE SURE TO REPLACE THE TEXT WITH YOUR API KEY
+
+    
+    ' Extract the meeting transcript from the document
+    Set textRange = ActiveDocument.Content              ' set the range to the entire current active document text
+    transcribedText = textRange.Text                    ' retrieve the entire text from the document
+    
+    
+    ' check if there was text inserted into the document before calling OpenAI
+    ' Note: you need to clean the text before checking if it's empty since any special characters such as paragraph marks count in the length
+    ' Cleaning the transcribed text and make sure it's all one contunuous string of text without formatting ASCII characters
+    chatPromptTransc = CleanText(transcribedText)
+    
+    If Len(Trim(chatPromptTransc)) = 0 Then             ' If the extracted text is empty display a message and exit
+        MsgBox "There is no transcribed text in the Word document to extract and send to OpenAI"
+        Exit Sub
+    End If
+    
+    ' Set the Model Name for use in the request
+    modelName = "gpt-4-turbo-preview"
+
+    ' Set the values for temperature and top_p - you can experiment with these values to get your desired results
+    tempValue = 0.2
+    top_pValue = 1
+    freqPenalty = 0#    ' use a value of 0.0 to direct the model to provide more accuracy and clarity in the generated output to remain true to the source text
+    presPenalty = 0#    ' use a value of 0.0 to ensure more accuracy by ensuring that the model maintains fidelity to the source text
+
+    ' Set the API endpoint URL
+    url = "https://api.openai.com/v1/chat/completions"  ' compatible with gpt-4, gpt-4-turbo-preview, gpt-3.5-turbo
+    
+    ' Indicate to the Chat API what action it should take and how to behave
+    systemPrompt = "Simulate three brilliant, logical project managers reviewing status meeting minutes and determining the action items. " & _
+                "The three project managers review the following status meeting minutes and create their list of action items. The three project managers must " & _
+                "carefully review the full list of meeting notes to ensure they capture any action items hidden in the minutes. " & _
+                "The three experts then carefully compare their list against the action item list from the other project managers.  " & _
+                "Based on their comparison they then generate a final list of action items. Do not generate action items for milestones in the minutes. " & _
+                "The action items should list the following for each item: title of the action item, due date if known, dependency if known, and owner of the action item." & _
+                "If there is no dependency state None.  Try to infer the due date based on the minutes, but if the due date cannot be determined than specify TBD. " & _
+                "Format the output so that it could be inserted into a Word document. Do not bold the generated text. " & _
+                "An example format of output is: \nAction Item: Develop Power User training plan and materials.\n   - Due Date: April 25/2024\n   - Dependency: Completion of Teams training materials.\n   - Owner: Alice Williams (Training Lead)\n"
+
+
+    ' Construct JSON request data
+    requestData = "{""model"":""" & modelName & """, " & _
+              """messages"": [{""role"":""system"",""content"":""" & systemPrompt & """}, " & _
+                              "{""role"":""user"",""content"":""" & chatPromptTransc & """} ], " & _
+              """temperature"": " & tempValue & ", " & _
+              """top_p"": " & top_pValue & ", " & _
+              """frequency_penalty"": " & freqPenalty & ", " & _
+              """presence_penalty"": " & presPenalty & ", " & _
+              """max_tokens"": 1000}"
+    
+
+    ' Create the HTTP request object
+    Set httpRequest = CreateObject("MSXML2.XMLHTTP")
+       
+    ' Set HTTP request parameters
+     With httpRequest
+       .Open "POST", url, False
+       .setRequestHeader "Content-Type", "application/json"
+       .setRequestHeader "Authorization", "Bearer " & OpenAI_Api_Key ' Replace with your API key in the code above
+       .send requestData
+       statusCode = .Status
+       response = .responseText
+    End With
+    
+    
+    ' Check if request was successful
+    If statusCode = 200 Then
+        ' text generation was successful
+        
+        ' Set the range to the end of the current active document
+        Set textRange = ActiveDocument.Content
+        textRange.Collapse Direction:=wdCollapseEnd
+        
+        ' Insert a title for the action items section
+        textRange.Text = vbNewLine & "Action Items:"
+        
+        ' Apply formatting to the action items title
+        With textRange.Font
+           .Bold = True
+           .Underline = wdUnderlineSingle
+        End With
+               
+        ' Set the range to the end of the current active document
+        Set textRange = ActiveDocument.Content
+        textRange.Collapse Direction:=wdCollapseEnd
+
+        displayText = FormatResponse(response)      ' Format the JSON response with the action items
+        
+        'Insert the action items into the Word document at the end of any existing text
+        textRange.Text = vbNewLine & displayText
+        
+        ' Change formatting of new text to no bold and not underlined
+        With textRange.Font
+            .Bold = False
+            .Underline = False
+        End With
+       
+    Else
+        ' Error condition - Parse the JSON response
+        Set jsonObjE = JsonConverter.ParseJson(response)
+        errorText = jsonObjE("error")("message")
+        errorType = jsonObjE("error")("type")
+        
+        
+        ' Set a range at the end of the current active document
+        Set textRange = ActiveDocument.Content
+        textRange.Collapse Direction:=wdCollapseEnd
+        
+        ' Insert error message into Word document
+        displayErrorText = "Error: " & vbCrLf & "Error type = " & errorType & vbCrLf & "Error Description = " & errorText
+        textRange.Text = vbNewLine & displayErrorText
+      
+    End If
+    
+    ' Clean up
+    Set httpRequest = Nothing
+
+End Sub
+
+' Extract the generated text from the chat/completions API response
+Function FormatResponse(responseText As String) As String
+ 
+    Dim jsonObj As Object
+    Dim textToInsert As String
+    On Error GoTo FormatResponseError
+    
+    ' Parse the JSON response
+    Set jsonObj = JsonConverter.ParseJson(responseText)
+    
+    ' Check if JSON parsing was successful
+    If jsonObj Is Nothing Then
+        ' Handle JSON parsing failure
+        FormatResponse = "Error: JSON parsing failed."
+        Exit Function
+    End If
+    
+    ' Check if the expected structure of JSON is found
+    If Not jsonObj.Exists("choices") Or jsonObj("choices").Count = 0 Then
+        ' Handle unexpected JSON structure
+        FormatResponse = "Error: Unexpected JSON structure."
+        Exit Function
+    End If
+    
+    ' Extract the "content" part from the JSON response - which contains the text of the action items
+    textToInsert = jsonObj("choices")(1)("message")("content")
+    
+    ' Return the extracted text
+    FormatResponse = textToInsert
+    
+    Exit Function
+    
+FormatResponseError:
+
+    MsgBox "Error " & Err.Number & " (" & Err.Description & ") in procedure FormatResponse."
+    
+End Function
+
+' Clean up the string of text to remove ASCII formating that will cause issues with the API call
+Function CleanText(textToClean As String) As String
+    Dim cleanedText As String
+    
+    cleanedText = Replace(textToClean, vbLf, "")              ' remove line feed characters
+    cleanedText = Replace(cleanedText, vbCr, "")              ' remove carriage return characters
+    cleanedText = Replace(cleanedText, vbTab, "")             ' remove tab characters
+    cleanedText = Replace(cleanedText, vbVerticalTab, "")     ' remove manual line break characters
+    cleanedText = Replace(cleanedText, vbCrLf, "")            ' remove combined carriage return and line feed characters
+    cleanedText = Replace(cleanedText, Chr(34), Chr(39))      ' replace double quotes with single quote
+    CleanText = cleanedText
+
+End Function
