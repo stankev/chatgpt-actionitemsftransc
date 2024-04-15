@@ -6,7 +6,7 @@ Example of how to use the power of Generative AI from Microsoft Word & OpenAI AP
 This was tested with the “Microsoft® Word for Microsoft 365 MSO (Version 2402)”.  Other versions of Micosoft Word should work but testing will be needed and possibly slight modifications will the required.
 
 ## Instructions
-Detailed instructions can be found in this blog post: [Using Gen AI to generate Action Items in Word from an audio recording](https://www.aiinnovate360.com/)
+Detailed instructions can be found in this blog post: [How to Efficiently Transcribe Audio Recordings and Generate Action Items with Word and OpenAI APIs](https://www.aiinnovate360.com/post/how-to-efficiently-transcribe-audio-recordings-and-generate-action-items-with-word-and-openai)
 ## Dependencies
 This code has a dependency on two other VBA libraries:
 - Requires importing the [VBA-JSON library](https://github.com/VBA-tools/VBA-JSON) providing the JsonConverter
