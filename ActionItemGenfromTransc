@@ -10,7 +10,7 @@
 ' GitHib Repository:    https://github.com/stankev/chatgpt-actionitemsftransc
 '
 '******************************************************************************************************
-Sub ActionItemFTransc()
+Sub ActionItemsFTransc()
         
     Dim textRange As Range
     Dim systemPrompt As String, chatPromptTransc As String
